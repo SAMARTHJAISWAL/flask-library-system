@@ -99,48 +99,9 @@ python3 run.py
    - Proper indexing on frequently queried fields
    - Unique constraints on ISBN and email
 
-## Assumptions and Limitations
-
-1. **Authentication**:
-   - Simple token implementation (not as robust as JWT)
-   - No refresh token mechanism
-   - Basic password hashing (in production, use bcrypt or Argon2)
-
-2. **Database**:
-   - SQLite is not suitable for high concurrency
-   - No database migrations support
-   - In-memory token blacklist (not persistent)
-
-3. **General**:
-   - Basic search implementation (no full-text search)
-   - No rate limiting
-   - No input sanitization beyond basic validation
-
 ## Running Tests
 
 Run the test suite using pytest:
 ```bash
 python3 -m pytest tests/
 ```
-
-## Future Improvements
-
-1. Add support for:
-   - Book borrowing system
-   - Fine calculation
-   - Book reservations
-   - Multiple copies tracking
-
-2. Enhance security:
-   - Implement refresh tokens
-   - Add rate limiting
-   - Use stronger password hashing
-
-3. Improve search:
-   - Implement full-text search
-   - Add filters and sorting
-   - Support advanced query operators
-
-## License
-
-This project is open-source and available under the MIT License.
