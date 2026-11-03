@@ -1,111 +1,92 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request
+
+from app.db import get_connection
 from app.models.member import Member
 from app.utils.auth_utils import require_auth
-from typing import Tuple, Dict, Any, List
-import sqlite3
-from config import Config
+from app.utils.pagination import get_pagination, page_info
 
-bp = Blueprint('members', __name__, url_prefix='/members')
+bp = Blueprint("members", __name__, url_prefix="/members")
 
-@bp.route('', methods=['GET'])
+
+def _row_to_dict(row) -> dict:
+    return {"id": row[0], "name": row[1], "email": row[2]}
+
+
+@bp.route("", methods=["GET"])
 @require_auth
-def list_members() -> Tuple[Dict[str, Any], int]:
+def list_members():
+    page, per_page = get_pagination()
+    conn = get_connection()
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', Config.PAGE_SIZE, type=int)
-        conn = sqlite3.connect(Config.DATABASE_PATH)
-        c = conn.cursor()
-        c.execute('SELECT COUNT(*) FROM members')
-        total = c.fetchone()[0]
-        offset = (page - 1) * per_page
-        c.execute('SELECT id, name, email FROM members LIMIT ? OFFSET ?', 
-                 (per_page, offset))
-        members = []
-        for row in c.fetchall():
-            members.append({
-                "id": row[0],
-                "name": row[1],
-                "email": row[2]
-            })
+        total = conn.execute("SELECT COUNT(*) FROM members").fetchone()[0]
+        rows = conn.execute(
+            "SELECT id, name, email FROM members ORDER BY id LIMIT ? OFFSET ?",
+            (per_page, (page - 1) * per_page),
+        ).fetchall()
+    finally:
         conn.close()
-        return {
-            "members": members,
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "total_pages": (total + per_page - 1) // per_page
-        }, 200
-    except Exception as e:
-        return {"error": str(e)}, 500
-@bp.route('/<int:id>', methods=['GET'])
+    return {"members": [_row_to_dict(r) for r in rows], **page_info(total, page, per_page)}, 200
+
+
+@bp.route("/<int:id>", methods=["GET"])
 @require_auth
-def get_member(id: int) -> Tuple[Dict[str, Any], int]:
+def get_member(id: int):
+    conn = get_connection()
     try:
-        conn = sqlite3.connect(Config.DATABASE_PATH)
-        c = conn.cursor()
-        c.execute('SELECT id, name, email FROM members WHERE id = ?', (id,))
-        row = c.fetchone()
+        row = conn.execute("SELECT id, name, email FROM members WHERE id = ?", (id,)).fetchone()
+    finally:
         conn.close()
-        if row is None:
-            return {"error": "Member not found"}, 404
-        return {
-            "id": row[0],
-            "name": row[1],
-            "email": row[2]
-        }, 200
-    except Exception as e:
-        return {"error": str(e)}, 500
-@bp.route('/<int:id>', methods=['PUT'])
+    if row is None:
+        return {"error": "Member not found"}, 404
+    return _row_to_dict(row), 200
+
+
+@bp.route("/<int:id>", methods=["PUT"])
 @require_auth
-def update_member(id: int) -> Tuple[Dict[str, Any], int]:
+def update_member(id: int):
+    data = request.get_json(silent=True)
+    if not data:
+        return {"error": "No data provided"}, 400
+    if "email" in data:
+        return {"error": "Email cannot be updated"}, 400
+
+    updates, values = [], []
+    if "name" in data:
+        error = Member.validate_name(data["name"])
+        if error:
+            return {"error": error}, 400
+        updates.append("name = ?")
+        values.append(data["name"])
+    if "password" in data:
+        error = Member.validate_password(data["password"])
+        if error:
+            return {"error": error}, 400
+        updates.append("password = ?")
+        values.append(Member.hash_password(data["password"]))
+    if not updates:
+        return {"error": "No valid fields to update"}, 400
+
+    conn = get_connection()
     try:
-        data = request.get_json()
-        if not data:
-            return {"error": "No data provided"}, 400
-        if 'email' in data:
-            return {"error": "Email cannot be updated"}, 400
-        updates = []
-        values = []
-        if 'name' in data:
-            updates.append('name = ?')
-            values.append(data['name'])
-        if 'password' in data:
-            updates.append('password = ?')
-            values.append(Member.hash_password(data['password']))
-        if not updates:
-            return {"error": "No valid fields to update"}, 400
-        values.append(id)
-        conn = sqlite3.connect(Config.DATABASE_PATH)
-        c = conn.cursor()
-        query = f"UPDATE members SET {', '.join(updates)} WHERE id = ?"
-        c.execute(query, values)
+        c = conn.execute(f"UPDATE members SET {', '.join(updates)} WHERE id = ?", (*values, id))
         if c.rowcount == 0:
-            conn.close()
             return {"error": "Member not found"}, 404
         conn.commit()
-        c.execute('SELECT id, name, email FROM members WHERE id = ?', (id,))
-        row = c.fetchone()
+        row = conn.execute("SELECT id, name, email FROM members WHERE id = ?", (id,)).fetchone()
+    finally:
         conn.close()
-        return {
-            "id": row[0],
-            "name": row[1],
-            "email": row[2]
-        }, 200
-    except Exception as e:
-        return {"error": str(e)}, 500
-@bp.route('/<int:id>', methods=['DELETE'])
+    return _row_to_dict(row), 200
+
+
+@bp.route("/<int:id>", methods=["DELETE"])
 @require_auth
-def delete_member(id: int) -> Tuple[Dict[str, Any], int]:
+def delete_member(id: int):
+    conn = get_connection()
     try:
-        conn = sqlite3.connect(Config.DATABASE_PATH)
-        c = conn.cursor()
-        c.execute('DELETE FROM members WHERE id = ?', (id,))
+        c = conn.execute("DELETE FROM members WHERE id = ?", (id,))
         if c.rowcount == 0:
-            conn.close()
             return {"error": "Member not found"}, 404
         conn.commit()
+    finally:
         conn.close()
-        return {"message": "Member deleted successfully"}, 200
-    except Exception as e:
-        return {"error": str(e)}, 500
-
+    return {"message": "Member deleted successfully"}, 200
