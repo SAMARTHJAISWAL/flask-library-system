@@ -29,11 +29,11 @@ class Book:
         )
 
     def validate(self) -> Optional[str]:
-        if not self.title or len(self.title.strip()) == 0:
+        if not isinstance(self.title, str) or not self.title.strip():
             return "Title is required"
-        if not self.author or len(self.author.strip()) == 0:
+        if not isinstance(self.author, str) or not self.author.strip():
             return "Author is required"
-        if not self.isbn or len(self.isbn.strip()) == 0:
+        if not isinstance(self.isbn, str) or not self.isbn.strip():
             return "ISBN is required"
         if self.quantity < 0:
             return "Quantity cannot be negative"
