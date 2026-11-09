@@ -116,3 +116,7 @@ Each test gets its own temporary SQLite database.
 pip install -r requirements-dev.txt
 python -m pytest
 ```
+
+## Licence
+
+[MIT](LICENSE) © 2024–2026 Samarth Jaiswal
